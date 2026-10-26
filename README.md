@@ -29,4 +29,10 @@ pnpm dev
 
 `pnpm build` で型検査と本番ビルド、`pnpm lint` でコード検査を実行できます。
 
+## デプロイ
+
+GitHub Pages向けのワークフローは `.github/workflows/deploy.yml` です。リポジトリの **Settings → Pages → Build and deployment → Source** を **GitHub Actions** に設定してください。
+
+`main` へのpush、またはActions画面からの手動実行で、Node.js 24 / pnpm 12.14.0を使って依存関係を固定インストールし、型検査・ビルド後に `dist` を公開します。公開先のベースパスはPagesの設定から取得するため、リポジトリ配下のURLとカスタムドメインの両方に対応します。追加のシークレット設定は不要です。
+
 制作にLLM（GPT-6.1-Sol）を使用しています。notestockの公式プロジェクトではありません。
