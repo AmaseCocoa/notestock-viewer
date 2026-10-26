@@ -1,11 +1,30 @@
 import { computed, ref, watch } from 'vue'
 import { parsePosts, type ImportLog, type Post, type Visibility } from '../lib/posts'
 
+interface Archive {
+  id: string
+  filename: string
+  posts: Post[]
+  logs: ImportLog[]
+  error: string
+}
+
 export function useArchive() {
-  const posts = ref<Post[]>([])
-  const filename = ref('')
-  const error = ref('')
-  const logs = ref<ImportLog[]>([])
+  const archives = ref<Archive[]>([])
+  const activeId = ref('')
+  let nextId = 0
+  const selected = computed(() =>
+    activeId.value
+      ? archives.value.filter((archive) => archive.id === activeId.value)
+      : archives.value,
+  )
+  const posts = computed(() => selected.value.flatMap((archive) => archive.posts))
+  const logs = computed(() =>
+    selected.value.flatMap((archive) =>
+      archive.logs.map((log) => ({ ...log, filename: archive.filename })),
+    ),
+  )
+  const errors = computed(() => selected.value.filter((archive) => archive.error))
   const loading = ref(false)
   const query = ref('')
   const visibility = ref<Visibility | ''>('')
@@ -32,45 +51,52 @@ export function useArchive() {
       )
   })
   const visiblePosts = computed(() => filtered.value.slice(0, page.value * 40))
-  watch([query, visibility, order], () => {
+  watch([query, visibility, order, activeId], () => {
     page.value = 1
   })
-  async function loadFile(file: File) {
+  async function loadFiles(files: File[]) {
+    if (loading.value || !files.length) return
     loading.value = true
-    error.value = ''
-    logs.value = []
     try {
-      const parsed = parsePosts(JSON.parse((await file.text()).replace(/^\uFEFF/, '')), (log) =>
-        logs.value.push(log),
-      )
-      posts.value = parsed
-      filename.value = file.name
-      query.value = ''
-      visibility.value = ''
+      for (const file of files) {
+        const archive: Archive = {
+          id: `archive-${++nextId}`,
+          filename: file.name,
+          posts: [],
+          logs: [],
+          error: '',
+        }
+        try {
+          archive.posts = parsePosts(
+            JSON.parse((await file.text()).replace(/^\uFEFF/, '')),
+            (log) => archive.logs.push(log),
+          ).map((post) => ({ ...post, key: `${archive.id}:${post.key}` }))
+        } catch (cause) {
+          archive.error =
+            cause instanceof SyntaxError
+              ? 'JSONを読み取れませんでした。ファイルの形式を確認してください。'
+              : cause instanceof Error
+                ? cause.message
+                : '読み込みに失敗しました。'
+        }
+        archives.value.push(archive)
+        activeId.value = files.length === 1 ? archive.id : ''
+      }
       page.value = 1
-    } catch (cause) {
-      error.value =
-        cause instanceof SyntaxError
-          ? 'JSONを読み取れませんでした。ファイルの形式を確認してください。'
-          : cause instanceof Error
-            ? cause.message
-            : '読み込みに失敗しました。'
     } finally {
       loading.value = false
     }
   }
-  function clear() {
-    posts.value = []
-    filename.value = ''
-    error.value = ''
-    logs.value = []
-    query.value = ''
-    visibility.value = ''
+  function closeArchive(id: string) {
+    archives.value = archives.value.filter((archive) => archive.id !== id)
+    if (activeId.value === id) activeId.value = ''
+    page.value = 1
   }
   return {
+    archives,
+    activeId,
     posts,
-    filename,
-    error,
+    errors,
     logs,
     loading,
     query,
@@ -79,7 +105,7 @@ export function useArchive() {
     page,
     filtered,
     visiblePosts,
-    loadFile,
-    clear,
+    loadFiles,
+    closeArchive,
   }
 }

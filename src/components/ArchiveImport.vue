@@ -2,25 +2,27 @@
 import { ref } from 'vue'
 import { IconUpload, IconFileTypeJs } from '@tabler/icons-vue'
 defineProps<{ loading: boolean; compact?: boolean }>()
-const emit = defineEmits<{ file: [file: File] }>()
+const emit = defineEmits<{ files: [files: File[]] }>()
 const input = ref<HTMLInputElement>()
 const dragging = ref(false)
 function select(event: Event) {
   const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-  if (file) emit('file', file)
+  const files = Array.from(target.files || [])
+  if (files.length) emit('files', files)
   target.value = ''
 }
 function drop(event: DragEvent) {
   dragging.value = false
-  const file = event.dataTransfer?.files[0]
-  if (file) emit('file', file)
+  const files = Array.from(event.dataTransfer?.files || [])
+  if (files.length) emit('files', files)
 }
 </script>
 <template>
   <input
     ref="input"
     type="file"
+    multiple
+    :disabled="loading"
     accept=".json,application/json"
     class="hidden"
     aria-label="エクスポートJSONを選択"
@@ -54,6 +56,6 @@ function drop(event: DragEvent) {
     >
       {{ loading ? '読み込み中…' : 'ファイルを選ぶ' }}
     </button>
-    <p class="mt-4 text-xs text-slate-400">.json形式に対応</p>
+    <p class="mt-4 text-xs text-slate-400">.json形式・複数ファイルに対応</p>
   </div>
 </template>

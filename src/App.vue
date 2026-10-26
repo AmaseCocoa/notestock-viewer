@@ -13,8 +13,9 @@ import { useArchive } from './composables/useArchive'
 import { visibilityLabels } from './lib/posts'
 const {
   posts,
-  filename,
-  error,
+  archives,
+  activeId,
+  errors,
   logs,
   loading,
   query,
@@ -23,8 +24,8 @@ const {
   page,
   filtered,
   visiblePosts,
-  loadFile,
-  clear,
+  loadFiles,
+  closeArchive,
 } = useArchive()
 function resetFilters() {
   query.value = ''
@@ -47,23 +48,34 @@ function resetFilters() {
       >
         <IconNotes :size="19" />投稿アーカイブ
       </div>
-      <div class="mt-5 lg:mt-7"><ArchiveImport compact :loading="loading" @file="loadFile" /></div>
-      <div v-if="filename" class="mt-5 text-xs leading-6 text-slate-500">
-        <p class="break-all">{{ filename }}</p>
-        <p>{{ posts.length.toLocaleString() }}件の投稿</p>
-        <button
-          class="mt-2 text-slate-500 underline underline-offset-4 hover:text-red-700"
-          @click="clear"
-        >
-          読み込んだデータを閉じる
-        </button>
+      <div class="mt-5 lg:mt-7">
+        <ArchiveImport compact :loading="loading" @files="loadFiles" />
+      </div>
+      <div v-if="archives.length" class="mt-5 space-y-2 text-xs leading-6 text-slate-500">
+        <div v-for="archive in archives" :key="archive.id" class="flex items-start gap-2">
+          <button
+            class="min-w-0 flex-1 text-left hover:text-teal-700"
+            @click="activeId = archive.id"
+          >
+            <span class="block break-all">{{ archive.filename }}</span>
+            <span>{{ archive.posts.length.toLocaleString() }}件の投稿</span>
+          </button>
+          <button
+            :aria-label="`${archive.filename}を閉じる`"
+            class="rounded p-1 hover:bg-slate-100"
+            @click="closeArchive(archive.id)"
+          >
+            <IconX :size="16" />
+          </button>
+        </div>
       </div>
       <p
-        v-if="error"
+        v-for="archive in errors"
+        :key="archive.id"
         role="alert"
-        class="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+        class="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-xs break-words text-red-700"
       >
-        {{ error }}
+        {{ archive.filename }}: {{ archive.error }}
       </p>
       <section v-if="logs.length" aria-label="読み込みログ" class="mt-5 space-y-3 text-xs">
         <h2 class="font-semibold text-slate-700">読み込みログ（{{ logs.length }}件）</h2>
@@ -78,7 +90,7 @@ function resetFilters() {
           "
         >
           <summary class="cursor-pointer break-words leading-5">
-            {{ log.level === 'error' ? 'エラー' : '警告' }}: {{ log.message }}
+            {{ log.filename }} — {{ log.level === 'error' ? 'エラー' : '警告' }}: {{ log.message }}
           </summary>
           <pre class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all">{{
             log.json
@@ -98,7 +110,33 @@ function resetFilters() {
         <h1 class="mt-2 text-2xl font-bold tracking-tight text-slate-900">投稿アーカイブ</h1>
         <p class="mt-2 text-sm text-slate-500">言葉を探して、あの日を振り返る。</p>
       </header>
-      <template v-if="filename">
+      <template v-if="archives.length">
+        <nav
+          aria-label="JSONファイルの切り替え"
+          class="flex gap-2 overflow-x-auto border-b border-slate-200 p-3"
+        >
+          <button
+            :aria-pressed="!activeId"
+            class="shrink-0 rounded-lg px-3 py-2 text-sm"
+            :class="!activeId ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-700'"
+            @click="activeId = ''"
+          >
+            すべて（{{ archives.length }}）
+          </button>
+          <button
+            v-for="archive in archives"
+            :key="archive.id"
+            :aria-pressed="activeId === archive.id"
+            class="max-w-64 shrink-0 truncate rounded-lg px-3 py-2 text-sm"
+            :class="
+              activeId === archive.id ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-700'
+            "
+            :title="archive.filename"
+            @click="activeId = archive.id"
+          >
+            {{ archive.filename }}
+          </button>
+        </nav>
         <section
           aria-label="投稿を検索・絞り込み"
           class="space-y-4 border-b border-slate-200 p-5 sm:px-7"
@@ -111,7 +149,9 @@ function resetFilters() {
               v-model="query"
               type="search"
               aria-label="投稿を検索"
-              placeholder="投稿やユーザーを検索"
+              :placeholder="
+                activeId ? 'このJSONの投稿やユーザーを検索' : 'すべてのJSONから投稿やユーザーを検索'
+              "
               class="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pr-4 pl-11 text-sm"
             />
           </div>
@@ -148,7 +188,15 @@ function resetFilters() {
           </div>
         </section>
         <div role="feed" aria-label="投稿一覧">
-          <PostCard v-for="post in visiblePosts" :key="post.key" :post="post" />
+          <div v-for="post in visiblePosts" :key="post.key">
+            <p
+              v-if="!activeId"
+              class="break-all bg-slate-50 px-5 py-2 text-xs text-slate-500 sm:px-7"
+            >
+              {{ archives.find((archive) => post.key.startsWith(`${archive.id}:`))?.filename }}
+            </p>
+            <PostCard :post="post" />
+          </div>
         </div>
         <div v-if="!filtered.length" class="px-6 py-20 text-center">
           <IconSearch class="mx-auto text-slate-300" :size="32" />
@@ -173,7 +221,7 @@ function resetFilters() {
         </div>
       </template>
       <section v-else class="px-5 py-9 sm:px-7 sm:py-12">
-        <ArchiveImport :loading="loading" @file="loadFile" />
+        <ArchiveImport :loading="loading" @files="loadFiles" />
         <div class="mt-9 grid gap-6 text-sm sm:grid-cols-2">
           <div>
             <h3 class="font-semibold text-slate-800">言葉から探す</h3>
