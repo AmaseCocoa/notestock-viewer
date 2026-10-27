@@ -232,7 +232,7 @@ function resetFilters() {
           <div>
             <h3 class="font-semibold text-slate-800">公開範囲で絞る</h3>
             <p class="mt-2 text-xs leading-6 text-slate-500">
-              公開・未収載・フォロワー限定・ダイレクト。それぞれの投稿をまとめて振り返れます。
+              公開・未収載・ホーム・フォロワー限定・ダイレクト・指名から絞り込めます。
             </p>
           </div>
         </div>

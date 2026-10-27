@@ -47,7 +47,7 @@ function drop(event: DragEvent) {
     <IconFileTypeJs :size="38" stroke="1.4" class="mx-auto mb-5 text-teal-700" />
     <h3 class="text-lg font-bold text-slate-800">投稿の記録を、ここに。</h3>
     <p class="mt-2 text-sm leading-6 text-slate-500">
-      notestockからエクスポートした<br class="sm:hidden" />JSONファイルをドロップ
+      notestock・Misskeyからエクスポートした<br class="sm:hidden" />JSONファイルをドロップ
     </p>
     <button
       :disabled="loading"

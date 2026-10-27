@@ -1,8 +1,10 @@
 export const visibilityLabels = {
   public: '公開',
   unlisted: '未収載',
+  home: 'ホーム',
   followers: 'フォロワー限定',
   direct: 'ダイレクト',
+  specified: '指名',
 } as const
 export type Visibility = keyof typeof visibilityLabels
 export interface Post {
@@ -76,18 +78,45 @@ export function cleanHtml(html: string): string {
   }
   return doc.body.innerHTML
 }
+const isMisskey = (item: Record<string, unknown>) =>
+  'createdAt' in item && ('text' in item || 'files' in item || 'renoteId' in item)
+const misskeyVisibilities = ['public', 'home', 'followers', 'specified'] as const
+const escapeHtml = (text: string) =>
+  text.replace(
+    /[&<>"']/g,
+    (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!,
+  )
+const accountName = (account: Record<string, unknown>, fallback: string) =>
+  string(account.name) || string(account.preferredUsername) || string(account.username) || fallback
+const accountHandle = (account: Record<string, unknown>) =>
+  string(account.webfinger) ||
+  (string(account.username)
+    ? `@${string(account.username)}${account.host ? `@${string(account.host)}` : ''}`
+    : '')
+
 export interface ImportLog {
   level: 'warning' | 'error'
   message: string
   json: string
 }
 export function parsePosts(input: unknown, onLog: (log: ImportLog) => void = () => {}): Post[] {
-  if (!Array.isArray(input)) throw new Error('投稿の配列が入ったnotestockのJSONを選んでください。')
+  if (!Array.isArray(input))
+    throw new Error('投稿の配列が入ったnotestockまたはMisskeyのJSONを選んでください。')
   const items = input.map(record)
   const isAnnounce = (item: Record<string, unknown>) =>
-    item.type === 'Announce' || typeof item.announce === 'string'
+    item.type === 'Announce' ||
+    typeof item.announce === 'string' ||
+    (isMisskey(item) &&
+      Boolean(string(item.renoteId)) &&
+      !string(item.text).trim() &&
+      !string(item.cw).trim() &&
+      !item.poll &&
+      !(Array.isArray(item.files) && item.files.length))
   const targetId = (item: Record<string, unknown>) =>
-    string(item.announce) || string(item.object) || string(record(item.object).id)
+    string(item.announce) ||
+    string(item.renoteId) ||
+    string(item.object) ||
+    string(record(item.object).id)
   const notes = new Map(
     items
       .filter((item) => !isAnnounce(item) && string(item.id))
@@ -102,7 +131,8 @@ export function parsePosts(input: unknown, onLog: (log: ImportLog) => void = () 
     const item = announce
       ? notes.get(target) || (typeof entry.object === 'object' ? record(entry.object) : {})
       : entry
-    const account = record(item.account)
+    const misskey = isMisskey(item)
+    const account = record(misskey ? item.user : item.account)
     const log = (level: ImportLog['level'], message: string) =>
       onLog({
         level,
@@ -117,53 +147,65 @@ export function parsePosts(input: unknown, onLog: (log: ImportLog) => void = () 
       log('error', 'idがないため、投稿を読み取れませんでした。')
       return []
     }
+    if (misskey && !misskeyVisibilities.some((visibility) => visibility === item.visibility)) {
+      log('error', 'Misskeyの公開範囲が不明なため、投稿を読み取れませんでした。')
+      return []
+    }
     const to = strings(item.to),
       cc = strings(item.cc)
     const isPublic = (v: string) =>
       v === 'https://www.w3.org/ns/activitystreams#Public' || v === 'as:Public'
     const followers = string(account.followers)
-    const visibility: Visibility = to.some(isPublic)
-      ? 'public'
-      : cc.some(isPublic)
-        ? 'unlisted'
-        : [...to, ...cc].some((v) => v === followers || v.endsWith('/followers'))
-          ? 'followers'
-          : 'direct'
-    const content = cleanHtml(string(item.content))
+    const visibility: Visibility = misskey
+      ? (item.visibility as (typeof misskeyVisibilities)[number])
+      : to.some(isPublic)
+        ? 'public'
+        : cc.some(isPublic)
+          ? 'unlisted'
+          : [...to, ...cc].some((v) => v === followers || v.endsWith('/followers'))
+            ? 'followers'
+            : 'direct'
+    const content = misskey
+      ? escapeHtml(string(item.text)).replace(/\r\n?|\n/g, '<br>')
+      : cleanHtml(string(item.content))
     const text = new DOMParser().parseFromString(content, 'text/html').body.textContent || ''
-    const name = string(account.name) || string(account.preferredUsername) || '名前なし'
-    const handle = string(account.webfinger) || string(item.attributedTo) || string(item.actor)
-    const summary = string(item.summary)
-    const boostAccount = record(entry.account)
+    const name = accountName(account, misskey ? '自分' : '名前なし')
+    const handle = accountHandle(account) || string(item.attributedTo) || string(item.actor)
+    const summary = string(misskey ? item.cw : item.summary)
+    const boostAccount = record(isMisskey(entry) ? entry.user : entry.account)
     const boost = announce
       ? {
-          name: string(boostAccount.name) || string(boostAccount.preferredUsername) || '名前なし',
-          handle: string(boostAccount.webfinger) || string(entry.actor) || string(boostAccount.id),
-          published: string(entry.published),
+          name: accountName(boostAccount, isMisskey(entry) ? '自分' : '名前なし'),
+          handle: accountHandle(boostAccount) || string(entry.actor) || string(boostAccount.id),
+          published: string(entry.published) || string(entry.createdAt),
         }
       : undefined
+    const attachments = misskey ? item.files : item.attachment
+    const files = Array.isArray(attachments) ? attachments : []
     const post: Post = {
       key: `${announce ? 'announce' : 'note'}:${index}`,
       boost,
       id: string(item.id),
       content,
       summary,
-      published: string(item.published),
+      published: string(misskey ? item.createdAt : item.published),
       visibility,
       searchText: `${text} ${summary} ${name} ${handle} ${boost?.name || ''} ${boost?.handle || ''}`
         .normalize('NFKC')
         .toLocaleLowerCase(),
       name,
       handle,
-      avatar: safeUrl(record(account.icon).url),
-      sensitive: item.sensitive === true,
-      attachments: (Array.isArray(item.attachment) ? item.attachment : [])
+      avatar: safeUrl(misskey ? account.avatarUrl : record(account.icon).url),
+      sensitive:
+        item.sensitive === true ||
+        (misskey && files.some((file) => record(file).isSensitive === true)),
+      attachments: files
         .map((value) => {
           const attachment = record(value)
           return {
             url: safeUrl(attachment.url),
-            name: string(attachment.name),
-            mediaType: string(attachment.mediaType),
+            name: string(attachment.comment) || string(attachment.name),
+            mediaType: string(misskey ? attachment.type : attachment.mediaType),
           }
         })
         .filter((a) => a.url),

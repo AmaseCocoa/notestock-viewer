@@ -7,11 +7,19 @@ import {
   IconLink,
   IconExternalLink,
   IconRepeat,
+  IconHome,
 } from '@tabler/icons-vue'
 import { formatDate, safeUrl, visibilityLabels, type Post } from '../lib/posts'
 defineProps<{ post: Post }>()
 const expanded = ref(false)
-const icons = { public: IconWorld, unlisted: IconLink, followers: IconLock, direct: IconMail }
+const icons = {
+  public: IconWorld,
+  unlisted: IconLink,
+  home: IconHome,
+  followers: IconLock,
+  direct: IconMail,
+  specified: IconMail,
+}
 </script>
 
 <template>
