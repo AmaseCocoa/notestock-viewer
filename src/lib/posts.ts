@@ -112,6 +112,7 @@ export function parsePosts(input: unknown, onLog: (log: ImportLog) => void = () 
       !string(item.cw).trim() &&
       !item.poll &&
       !(Array.isArray(item.files) && item.files.length))
+  const isMisskeyRepost = (item: Record<string, unknown>) => isMisskey(item) && isAnnounce(item)
   const targetId = (item: Record<string, unknown>) =>
     string(item.announce) ||
     string(item.renoteId) ||
@@ -122,9 +123,15 @@ export function parsePosts(input: unknown, onLog: (log: ImportLog) => void = () 
       .filter((item) => !isAnnounce(item) && string(item.id))
       .map((item) => [string(item.id), item]),
   )
-  const announcedIds = new Set(items.filter(isAnnounce).map(targetId).filter(Boolean))
+  const announcedIds = new Set(
+    items
+      .filter((item) => isAnnounce(item) && !isMisskeyRepost(item))
+      .map(targetId)
+      .filter(Boolean),
+  )
   return input.flatMap((value, index) => {
     const entry = record(value)
+    if (isMisskeyRepost(entry)) return []
     const announce = isAnnounce(entry)
     if (!announce && announcedIds.has(string(entry.id))) return []
     const target = targetId(entry)
@@ -215,6 +222,24 @@ export function parsePosts(input: unknown, onLog: (log: ImportLog) => void = () 
       return []
     }
     return [post]
+  })
+}
+export function exportPosts(posts: Post[]) {
+  return posts.map((post) => {
+    const doc = new DOMParser().parseFromString(post.content, 'text/html')
+    for (const br of doc.body.querySelectorAll('br')) br.replaceWith('\n')
+    for (const block of doc.body.querySelectorAll('p, div, blockquote, li, pre')) block.append('\n')
+    const date = new Date(post.published)
+    return {
+      published: Number.isNaN(date.getTime()) ? null : date.toISOString(),
+      content: doc.body.textContent?.replace(/\n+$/, '') || '',
+      visibility:
+        post.visibility === 'home'
+          ? 'unlisted'
+          : post.visibility === 'specified'
+            ? 'direct'
+            : post.visibility,
+    }
   })
 }
 export const formatDate = (value: string) => {

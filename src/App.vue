@@ -8,6 +8,7 @@ import {
   IconNotes,
 } from '@tabler/icons-vue'
 import ArchiveImport from './components/ArchiveImport.vue'
+import ArchiveExport from './components/ArchiveExport.vue'
 import PostCard from './components/PostCard.vue'
 import { useArchive } from './composables/useArchive'
 import { visibilityLabels } from './lib/posts'
@@ -69,6 +70,7 @@ function resetFilters() {
           </button>
         </div>
       </div>
+      <ArchiveExport v-if="archives.length" :archives="archives" />
       <p
         v-for="archive in errors"
         :key="archive.id"

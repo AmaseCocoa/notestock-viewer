@@ -25,12 +25,33 @@ pnpm dev
 - `text` の改行、`cw`、`files` の添付・センシティブ指定に対応します。MFMはプレーンテキストとして表示します。
 - `visibility` は `public`（公開）/ `home`（ホーム）/ `followers`（フォロワー限定）/ `specified`（指名）をそのまま保持します。不明な値は対象JSONとともに左のログへエラーを残します。
 - 投稿者情報がないエクスポートでは名前を「自分」と表示します。サーバーURLを含まないidから元投稿のリンクは生成しません。
-- 本文のないRenoteは、同じJSONに本体Noteがある場合にまとめて表示します。本体が見つからない場合は警告を残してスキップします。
+- 本文・CW・投票・添付のないRenote（repost）は、警告を出さずに無視します。引用Renoteは通常の投稿として読み込みます。
+
+## 解析用JSONの書き出し
+
+左側の「解析用JSONを書き出す」で対象ファイルを複数選び、`posts.json` を保存できます。検索条件や表示タブにかかわらず、選択したファイルの読み込み済み投稿をすべて含めます。ファイル間の重複は除去しません。
+
+各投稿を次の3項目に統一した配列です。
+
+```json
+[
+  {
+    "published": "2026-10-28T00:00:00.000Z",
+    "content": "投稿本文\n改行も保持します。",
+    "visibility": "unlisted"
+  }
+]
+```
+
+- `published`: UTCのISO 8601日時。不明・不正な日時は `null`。
+- `content`: HTMLの装飾を取り除いた本文。CWや添付情報は含めません。MisskeyのMFM記法はそのままです。
+- `visibility`: `public` / `unlisted` / `followers` / `direct`。Misskeyの `home` は `unlisted`、`specified` は `direct` に対応させます。
 
 ## ファイル構成
 
 - `src/App.vue`: 全体レイアウト・検索フォーム・一覧
 - `src/components/ArchiveImport.vue`: ファイル選択とドロップ
+- `src/components/ArchiveExport.vue`: 対象ファイルの選択・解析用JSONの保存
 - `src/components/PostCard.vue`: 投稿表示
 - `src/composables/useArchive.ts`: 読み込み・検索・絞り込み・表示件数
 - `src/lib/posts.ts`: データ型・形式検証・公開範囲の判定・HTML処理
